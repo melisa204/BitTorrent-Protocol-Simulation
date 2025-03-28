@@ -1,0 +1,49 @@
+Tema 2
+
+Logica de implementare
+Am urmat scheletul primit pentru implementare si am impartit totul in partea pentru tracker si partea pentru clienti.
+Trackerul:
+- prima data asteapta sa primeasca datele de la clienti si isi completeaza structura files, care este un vector ce contine structuri de tipul File_info, care contin numele fisierului si o alta structura de tip swarm (le-am separat asa ca sa respect enuntul, moemntul in care spune ca trackerul trimite swarmul clientului care il cere)
+- pentru fiecare client in parte asteapta sa primeasc numarul de fisiere pe care un client le detine, apoi numele primului si numarul sau de segmente; acum verific daca detine deja in  structura informatii despre fisierul respectiv, daca deja l-a primit de la alt client
+- daca l-a primit, atunci il trec ca owner pe actualul client si segmentele pur si simplu le primesc de la client, fara sa le adaug nicaieri
+- daca e prima data cand il primeste, atunci creez o noua structura cu numele fisierului si swarmul; swarm care contine un vector cu segmentele in ordine si cu ownerii sai: clienti care pe parcursul executiei programului detin un numar din segmentele fisierului, nu se stie cate (trackerul stie doar ca un owner detine o parte din fisier, dar nu ce segmente exact)
+- dupa ce termin de primit toate datele de la clienti, trimit mesaj catre acestia ca isi pot incepe executia, pot trimite cereri si discuta intre ei
+- tarckerul in continuare, atata timp cat mai sunt clienti care nu au terminat de descarcat, primeste cereri de la clienti astfel: 
+    - fie sunt cereri de descarcare a swarmului sau de updatare a acestuia o data la 10 segmente descarcate de catre un client
+    - fie este notificat de faptul ca un client a terminat de descarcat un fisier, asa cum este prezentat in principiul protocolului
+    - fie este notificat de faptul ca un client a terminat tot de descarcat, moemnt in care contorizeaza intern ca sa stie cati clienti mai are de asteptat
+- dupa ce au terminat toti clientii de descarcat, trackerul trimite mesaje tuturor cu done si apoi se inchide si el
+In momentul in care trimite un swarm, trackerul prima data il adauga pe clientul care a cerut in lista de owneri. M-am gandit ca si daca acest client este intrebat de catre un alt client daca are un segment pana ca acesta sa aiba timp sa descarce orice, doar ii va spune ca nu are si nu este nicio problema, ci este un mai mare castig in momentul in care a descarcat un segment si fix pe acela poate sa il dea mai departe, este mult mai bine distribuit totul. Din linkurile de la final asa am inteles ca trebuie abordat: clientii primesc segmentele haotic, le pun ei la final in ordine pe baza informatiilor de la tracker si tocmai acesta este avantajul acestui protocol, faptul ca se poate intrerupe oricand si dupa sa fie reluat, deoarece ordinea conteaza doar la final.
+Deci, trackerul, mentine lista updatata si trimite informatiile cerute de clienti, ii contorizaza ca sa stie cati mai au de terminat si trimite mesaje de sincronizare.
+
+Clientii:
+- deschid fisierele proprii si trimit informatiile trackerului, moment in care isi updateaza si ei o structura globala cu fisierele pe care le detin, in care verifica in partea de upload daca au un segment pe care il cere un alt client si de asemenea un vector cu fisierele pe care vor sa le descarce (wanted_files)
+- apoi astept sa primeasca mesajul de la tracker ca pot sa inceapa descarcarea/uploadul de fisiere
+- sunt create cele 2 fire de executie
+- in partea de download:
+    - in schelet era initial transmis doar rankul, dar aveam nevoie si de fisierele pe care vreau sa le descarc, pe care le-am salvat local, asa ca am creat o structura pe care o trimit ca argument, care contine rankul procesului si aceste fisiere pe care vreau sa le descarc
+    - iterez prin fisierele pe care vreau sa le descarc
+    - pentru fiecare cer swarmul de la tracker (cum am spus si la tracker, este trecut drept owner inca de acum, deoarece foarte curand o sa aiba segmente)
+    - apoi verific daca am deja fisierul (ca sa respect descrierea protoocolului, aceea ca pot avea doar anumite segmente din fisier, nu toate)
+    - apoi iterez prin lista de segmente primita in swarm de la tracker si aleg cat mai distribuit clientul pe care il intreb daca are segmentul curent la care ma alfu
+    - am salvat o copie a ownerilor fisierului si cat timp n am gasit fisierul si mai am pe cine sa intreb, calculez un indice cu functia random modulo size-ul actual al copiei vectorului de owneri si apoi aleg sa intreb clientul care se afla la acest indice in vector, apoi, dupa ce raspunde si eventual am descarcat daca il are (simulez cu mesajul de ACK), il sterg din copia vectoruliu, deci size-ul lui se modifica mereu; m-am gandit ca asa evit cazurile in care random da acelasi numar de mai multe ori la rand
+    - apoi, o data la 10 segmente, cer din nou trackerului sa imi trimita swarmul, ca sa am datele actualizate
+    - apoi, chiar daca eu am iterat prin segemente si le am deja ordonate, ca sa respect principiul protocolului, sortez segmentele obtinute de mine pe baza hashurilor primite de la tracker, ca sa le am in ordinea buna
+    - dupa ce am terminat de descarcat un fisier, creez un fisier conform cerintei, afisez datele si trimit mesaj trackerului ca am terminat de descarcat un fisier
+    - de asemenea, cand termin de descarcat toate fisierele, trimit mesaj trackerului si termin partea de download, mai ramane activ doar uploadul meu 
+- in partea de upload:
+    - permanent astept sa primesc mesaj, pana in momentul in care primesc done de la tracker (cand au terminat de descarcat toti clientii si ma opresc si eu)
+    - apoi verific daca am segmentul de care sunt intrebat in fisierele mele
+    - trimit mesaj de ACK/NACK in functie de caz - aici simulez incarcarea
+
+Acestea sunt principiile pe care le-am urmat in implementare: trackerul are date despre ce clienti detin segmente din anumite fisiere, nu ce segmente detin si trimit lista cu ordinea hashurilor clientilor pentru ca acestia sa stie ce sa ceara de la ceilalti clienti si sa stie cum sa le ordoneze la final; clientii updateaza constant lista de swarmuri si uploaduld fiecarui client se inchide la final de tot, dupa ce termina toti de descarcat.
+
+Am declarat la inceput structurile pe care le-am folosit, prototipurile si variabilele globale. Am acel wanted_files local si owned_files glibal pentru ca la ineput ma gandeam numai la tracker  si cum sa ii trimit informatiile, nu ca trebuie sa mi le pastrez si eu ca sa stiu ce am si ce nu ca sa pot sa impart cu ceilalti si cand mi-am dat seama, a fost cel mai usor sa il pun global ca sa nu modific nimic.
+
+Mi-am dat seama ca si in cazul in care un tracker primeste segmente pe care deja le are trebuie sa primesc totus segmentele de la client dar sa nu fac nimic cu ele cand pica testele 2 si 4 pentru ca ele erau trimise dar nu le primea nimeni si ramanea blocat.
+
+
+Experenta implementarii
+Mi s-a parut destul de alambicat enuntul, cred  ca cel mai mult mi-a luat sa inteleg protocoulul, dar linkurile de la final au ajutat mult. 
+Am invatat ca nu e bine sa trimit mesaje direct, fara sa le pun intr-o variabila inainte de MPI_Send, altfel se comporta foarte ciudat. Si sa pun peste tot + 1 pentru terminator, pentru ca altfel sunt numai erori cu TRUNCATE.
+Am cautat foarte mult pe forum mesajele legate de tracker si cum este ok sa retinem datele, dar nu m-am gandit deloc sa ma uit si la cele legate de eficienta. Credeam ca daca am lucrat la lab cu rand(), trebuie sa il folosim pe acesta si am pus de la mine partea cu vectorul, deoarece ma gandeam doar ca ar putea sa dea acelasi numar de mai multe ori. Am vazut astazi foarte tarziu ca nu e suficient rand() si am inceput sa modific implemetarea, dar momentan am probleme de sincronizare si nu mai am timp sa o termin. Am incercat sa retin global in fiecare proces o variabila care sa contorizeze cate segmente per total a trimis deja altora, pentru ca in procesul de alegere, un client: sa intrebe fiecare client daca are sau nu un segment -> primeste raspuns cu ACK/NACK care reprezinta simple raspunsuri, ci nu simularea pe care o presupunem in varianta pe care am incarcat-o; daca a trimis nack un client, stiu ca nu urmeaza sa mai am cereri de la el, deci nu mai astept nimic; in schimb, daca am trimis ack, astept sa mi se ceara sa trimit shared_segments (am numit variabila globala care retine cate segmente am trimis altora pana acum) si il trimit cand mi se cere, apoi astept un mesaj de tipul send/nack (send daca clientul care mi-a cerut shared_segments a decis sa imi ceara mie segmentul deoarece am valoarea cea mai mica; nack daca nu mai vrea nimic de la mine si atunci doar primesc mesajul si atat, nu trimit mai departe). in download am pus in oglinda sendurile si recv in functie de cazuri, dar gresesc ceva, la testul 1 la procesul 3 la un moment dat ajunge sa ceara un ack, deci nu le sincronizez bine si nu mai am cand  sa modific. Sper ca este cat de cat in regula si cum am facut acum.
